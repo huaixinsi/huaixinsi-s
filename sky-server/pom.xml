@@ -115,6 +115,26 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
         </dependency>
+        <!-- 2. 修复spring-boot-starter-web依赖，排除冲突的spring-web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <exclusions>
+                <!-- 排除高版本的spring-web -->
+                <exclusion>
+                    <groupId>org.springframework</groupId>
+                    <artifactId>spring-web</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- 3. 手动引入和Spring Boot 2.7.3匹配的spring-web版本 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>5.3.22</version> <!-- 与Spring Boot 2.7.3完全匹配 -->
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 
     <build>
