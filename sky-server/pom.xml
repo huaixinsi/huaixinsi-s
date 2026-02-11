@@ -81,9 +81,23 @@
             <artifactId>aspectjweaver</artifactId>
         </dependency>
 
+        <!-- Swagger2 核心依赖 -->
+        <dependency>
+            <groupId>io.springfox</groupId>
+            <artifactId>springfox-swagger2</artifactId>
+            <version>2.9.2</version>
+        </dependency>
+        <!-- Swagger UI 界面 -->
+        <dependency>
+            <groupId>io.springfox</groupId>
+            <artifactId>springfox-swagger-ui</artifactId>
+            <version>2.9.2</version>
+        </dependency>
+        <!-- Knife4j 增强版（可选，替换原生 Swagger UI，更友好） -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
             <artifactId>knife4j-spring-boot-starter</artifactId>
+            <version>2.0.9</version>
         </dependency>
 
         <dependency>
@@ -114,6 +128,26 @@
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
+        </dependency>
+        <!-- 2. 修复spring-boot-starter-web依赖，排除冲突的spring-web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <exclusions>
+                <!-- 排除高版本的spring-web -->
+                <exclusion>
+                    <groupId>org.springframework</groupId>
+                    <artifactId>spring-web</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- 3. 手动引入和Spring Boot 2.7.3匹配的spring-web版本 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>5.3.22</version> <!-- 与Spring Boot 2.7.3完全匹配 -->
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 
