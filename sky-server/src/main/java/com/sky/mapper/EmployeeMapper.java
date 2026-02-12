@@ -24,4 +24,6 @@ public interface EmployeeMapper {
     List<Employee> page(EmployeePageQueryDTO employeePageQueryDTO);
 
     void update(Employee employee);
+
+    Employee getById(Integer id);
 }
