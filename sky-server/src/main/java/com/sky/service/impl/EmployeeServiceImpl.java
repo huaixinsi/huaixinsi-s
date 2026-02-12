@@ -9,9 +9,11 @@ import com.sky.context.BaseContext;
 import com.sky.dto.EmployeeDTO;
 import com.sky.dto.EmployeeLoginDTO;
 import com.sky.dto.EmployeePageQueryDTO;
+import com.sky.dto.PasswordEditDTO;
 import com.sky.entity.Employee;
 import com.sky.exception.AccountLockedException;
 import com.sky.exception.AccountNotFoundException;
+import com.sky.exception.PasswordEditFailedException;
 import com.sky.exception.PasswordErrorException;
 import com.sky.mapper.EmployeeMapper;
 import com.sky.result.PageResult;
@@ -21,7 +23,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
+import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -109,7 +113,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
     //根据id查询员工
     @Override
-    public Employee getById(Integer id) {
+    public Employee getById(Long id) {
         Employee employee = employeeMapper.getById(id);
         return employee;
     }
@@ -122,7 +126,55 @@ public class EmployeeServiceImpl implements EmployeeService {
         employee.setUpdateUser(BaseContext.getCurrentId());
         employeeMapper.update(employee);
     }
+    //修改密码
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void editPassword(PasswordEditDTO passwordEditDTO) {
+        // 1. 核心非空校验
+        if (passwordEditDTO == null) {
+            throw new PasswordEditFailedException("参数不能为空");
+        }
+        Long empId = BaseContext.getCurrentId();
+        String oldPassword = passwordEditDTO.getOldPassword();
+        String newPassword = passwordEditDTO.getNewPassword();
 
+        if (!StringUtils.hasText(oldPassword)) {
+            throw new PasswordEditFailedException("旧密码不能为空");
+        }
+        if (!StringUtils.hasText(newPassword)) {
+            throw new PasswordEditFailedException("新密码不能为空");
+        }
+        // 2. 校验新密码是否与旧密码相同
+        if (oldPassword.equals(newPassword)) {
+            throw new PasswordEditFailedException("新密码不能与旧密码相同");
+        }
+
+        // 3. 查询数据库中的员工信息（验证员工是否存在 + 获取旧密码）
+        Employee dbEmployee = employeeMapper.getById(empId);
+        if (dbEmployee == null) {
+            throw new PasswordEditFailedException("员工不存在，无法修改密码");
+        }
+
+        // 4. 加密旧密码（指定UTF-8编码，保证一致性）
+        String encryptedOldPwd = DigestUtils.md5DigestAsHex(oldPassword.getBytes(StandardCharsets.UTF_8));
+        // 5. 验证旧密码是否正确
+        if (!encryptedOldPwd.equals(dbEmployee.getPassword())) {
+            throw new PasswordEditFailedException("旧密码输入错误");
+        }
+
+        // 6. 加密新密码（指定UTF-8编码）
+        String encryptedNewPwd = DigestUtils.md5DigestAsHex(newPassword.getBytes(StandardCharsets.UTF_8));
+
+        // 7. 构建更新对象（仅更新密码、更新时间、更新人）
+        Employee employee = Employee.builder()
+                .id(empId)
+                .password(encryptedNewPwd)
+                .updateTime(LocalDateTime.now())
+                .updateUser(BaseContext.getCurrentId())
+                .build();
+
+        employeeMapper.update(employee);
+    }
 
 
 
