@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 菜品
@@ -46,5 +47,7 @@ public class Dish implements Serializable {
     private Long createUser;
 
     private Long updateUser;
+
+    private List<DishFlavor> flavors;
 
 }
