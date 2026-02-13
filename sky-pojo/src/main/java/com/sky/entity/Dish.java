@@ -48,6 +48,5 @@ public class Dish implements Serializable {
 
     private Long updateUser;
 
-    private List<DishFlavor> flavors;
 
 }
