@@ -33,7 +33,7 @@ public class DishController {
     @GetMapping("/admin/dish/page")
     public Result page(DishPageQueryDTO dishPageQueryDTO) {
         log.info("分页查询：{}", dishPageQueryDTO);
-        PageResult<Dish> pageResult = dishService.page(dishPageQueryDTO);
+        PageResult<DishVO> pageResult = dishService.page(dishPageQueryDTO);
         return Result.success(pageResult);
     }
 

@@ -2,27 +2,23 @@ package com.sky.service.impl;
 
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
-import com.sky.annotation.AutoFill;
 import com.sky.context.BaseContext;
 import com.sky.dto.DishDTO;
 import com.sky.dto.DishPageQueryDTO;
 import com.sky.entity.Dish;
 import com.sky.entity.DishFlavor;
-import com.sky.enumeration.OperationType;
 import com.sky.exception.DeletionNotAllowedException;
 import com.sky.mapper.DishMapper;
 import com.sky.mapper.SetmealDishMapper;
 import com.sky.result.PageResult;
-import com.sky.result.Result;
 import com.sky.service.DishService;
 import com.sky.vo.DishVO;
-import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.lang.reflect.Array;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -45,14 +41,14 @@ public class DishServiceimpl implements DishService {
         dish.setUpdateUser(BaseContext.getCurrentId());
         dishMapper.saveDish(dish);
         List<DishFlavor> flavors = dishDTO.getFlavors();
-        if(flavors != null && flavors.size() > 0)
+        if(flavors != null && !flavors.isEmpty())
         for (DishFlavor flavor : flavors) {
             flavor.setDishId(dish.getId());
         }
         dishMapper.saveDishFlavor(flavors);
     }
 
-    public PageResult<Dish> page(DishPageQueryDTO dishPageQueryDTO) {
+    public PageResult<DishVO> page(DishPageQueryDTO dishPageQueryDTO) {
         PageHelper.startPage(dishPageQueryDTO.getPage(),dishPageQueryDTO.getPageSize());
         Page<DishVO> page = dishMapper.page(dishPageQueryDTO);
         return new PageResult(page.getTotal(),page.getResult());
@@ -86,17 +82,21 @@ public class DishServiceimpl implements DishService {
         dish.setId(id);
         dishMapper.update(dish);
     }
+    @Transactional(rollbackFor = Exception.class)
     public void updateWithFlavor(DishDTO dishDTO) {
         Dish dish = new Dish();
-        BeanUtils.copyProperties(dishDTO,dish);
+        BeanUtils.copyProperties(dishDTO, dish);
         dishMapper.update(dish);
 
         List<DishFlavor> flavors = dishDTO.getFlavors();
-        if(flavors != null && flavors.size() > 0)
-        dishMapper.deleteDishFlavor(Arrays.asList(dish.getId()));
-        for (DishFlavor flavor : flavors) {
-            flavor.setDishId(dish.getId());
+        if (flavors != null && !flavors.isEmpty()) {
+            dishMapper.deleteDishFlavor(Arrays.asList(dish.getId()));
         }
+        if (flavors != null && !flavors.isEmpty()){
+            for (DishFlavor flavor : flavors) {
+                flavor.setDishId(dish.getId());
+            }
+    }
         dishMapper.saveDishFlavor(flavors);
     }
 
