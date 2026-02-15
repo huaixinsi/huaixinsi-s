@@ -40,4 +40,5 @@ public interface DishMapper {
     DishVO getByIdWithFlavor(Long id);
     @AutoFill(value = OperationType.UPDATE)
     void update(Dish dish);
+    List<Dish> list(Dish dish);
 }
