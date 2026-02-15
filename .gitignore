@@ -1,6 +1,18 @@
-**/target/
-.idea
+# 忽略 IDEA 配置文件和项目文件
+.idea/
 *.iml
+
+# 忽略 Java 编译后的 class 文件
 *.class
-*Test.java
+
+# 忽略 Maven/Gradle 编译输出目录（递归匹配所有目录下的 target）
+**/target/
+
+# 忽略所有 yml 配置文件（注意：去掉原规则中的多余空格）
+*.yml
+
+# 忽略所有 test 目录（递归匹配项目中所有 test 文件夹）
 **/test/
+
+# 忽略所有以 Test.java 结尾的测试文件
+*Test.java
