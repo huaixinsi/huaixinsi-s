@@ -1,5 +1,6 @@
 package com.sky.controller.admin;
 
+import com.sky.annotation.RedisCacheEvitctById;
 import com.sky.dto.DishDTO;
 import com.sky.dto.DishPageQueryDTO;
 import com.sky.entity.Dish;
@@ -21,6 +22,7 @@ public class DishController {
     @Autowired
     private DishServiceimpl dishService;
 
+    @RedisCacheEvitctById
     @ApiOperation("新增菜品")
     @PostMapping("/admin/dish")
     public Result save(@RequestBody DishDTO dishDTO) {
@@ -37,6 +39,7 @@ public class DishController {
         return Result.success(pageResult);
     }
 
+    @RedisCacheEvitctById
     @ApiOperation("批量删除菜品")
     @DeleteMapping("/admin/dish")
     public Result delete(@RequestParam List<Long> ids) {
@@ -52,15 +55,15 @@ public class DishController {
         DishVO dishVO = dishService.getByIdWithFlavor(id);
         return Result.success(dishVO);
     }
-
+    @RedisCacheEvitctById
     @ApiOperation("修改菜品的起售和停售")
     @PostMapping("/admin/dish/status/{status}")
-    public Result updateStatus(@PathVariable Integer status, @RequestParam Long id) {
+    public Result updateStatus(@RequestParam Long id,@PathVariable Integer status) {
         log.info("修改菜品状态：{}", id);
         dishService.updateStatus(status, id);
         return Result.success();
     }
-
+    @RedisCacheEvitctById
     @ApiOperation("修改菜品")
     @PutMapping("/admin/dish")
     public Result update(@RequestBody DishDTO dishDTO) {

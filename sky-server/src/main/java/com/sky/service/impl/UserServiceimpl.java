@@ -40,12 +40,13 @@ public class UserServiceimpl implements UserService {
         //判断用户是否存在
         com.sky.entity.User user = userMapper.getByOpenid(openid);
         //如果是新用户,自动完成注册
-        if (user == null)
+        if (user == null) {
             user = com.sky.entity.User.builder()
                     .openid(openid)
                     .createTime(LocalDateTime.now())
                     .build();
-        userMapper.insert(user);
+            userMapper.insert(user);
+        }
         //返回用户对象
         return user;
     }
