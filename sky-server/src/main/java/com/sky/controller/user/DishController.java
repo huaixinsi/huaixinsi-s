@@ -1,5 +1,6 @@
 package com.sky.controller.user;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.sky.annotation.RedisCacheByCategoryId;
 import com.sky.constant.StatusConstant;
 import com.sky.entity.Dish;
@@ -34,23 +35,32 @@ public class DishController {
      */
     @GetMapping("/list")
     @ApiOperation("根据分类id查询菜品")
-    @RedisCacheByCategoryId
     public Result<List<DishVO>> list(Long categoryId) {
-     /*   //生成redis的key，规则化dish的分类id
+
+        //构造redis中的key，规则：dish_分类id
         String key = "dish_" + categoryId;
-        //查询redis数据库
-        List<DishVO> list = (List<DishVO>) redisTemplate.opsForValue().get(key);
-        if (list != null && list.size() > 0) {
+        try {
+            //查询redis中是否存在菜品数据
+            List<DishVO> list = (List<DishVO>) redisTemplate.opsForValue().get(key);
+            if (list != null && list.size() > 0) {
+                //如果存在，直接返回，无须查询数据库
+                return Result.success(list);
+            }
+
+            Dish dish = new Dish();
+            dish.setCategoryId(categoryId);
+            dish.setStatus(StatusConstant.ENABLE);//查询起售中的菜品
+
+            //如果不存在，查询数据库，将查询到的数据放入redis中
+            list = dishService.listWithFlavor(dish);
+            redisTemplate.opsForValue().set(key, list);
+
             return Result.success(list);
-        }*/
-        //缓存中没有数据，生成数据存入redis
-        Dish dish = new Dish();
-        dish.setCategoryId(categoryId);
-        dish.setStatus(StatusConstant.ENABLE);//查询起售中的菜品
-        //查询mysql
-        List<DishVO> list = dishService.listWithFlavor(dish);
-        /*redisTemplate.opsForValue().set(key, list);*/
-        return Result.success(list);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error("查询失败");
+        }
+
     }
 
 }

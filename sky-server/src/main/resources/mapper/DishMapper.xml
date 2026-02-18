@@ -112,4 +112,7 @@
         </where>
         order by create_time desc
     </select>
+    <select id="getBySetmealId" resultType="Dish" parameterType="com.sky.dto.SetmealDTO">
+        select * from dish where id = #{id}
+    </select>
 </mapper>
