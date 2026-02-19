@@ -2,17 +2,16 @@ package com.sky.service.impl;
 
 import com.sky.context.BaseContext;
 import com.sky.dto.ShoppingCartDTO;
-import com.sky.entity.Dish;
 import com.sky.entity.Setmeal;
 import com.sky.entity.ShoppingCart;
 import com.sky.mapper.DishMapper;
 import com.sky.mapper.SetmealMapper;
 import com.sky.mapper.ShoppingCartMapper;
-import com.sky.service.SetmealService;
 import com.sky.service.ShoppingCartService;
 import com.sky.vo.DishVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,97 +31,90 @@ public class ShoppingCartServiceimpl implements ShoppingCartService {
     @Autowired
     private SetmealMapper setmealMapper;
     @Autowired
-    private RedisTemplate redisTemplate;
+    private RedisTemplate<String, Object> redisTemplate;
+
+    // 统一的购物车过期时间（分钟）
+    private static final long CART_EXPIRE_MINUTES = 30L;
+
+    /**
+     * 添加商品到购物车（菜品或套餐）
+     */
     public void add(ShoppingCartDTO shoppingCartDTO) {
         ShoppingCart shoppingCart = new ShoppingCart();
-        BeanUtils.copyProperties(shoppingCartDTO,shoppingCart);
+        BeanUtils.copyProperties(shoppingCartDTO, shoppingCart);
         shoppingCart.setUserId(BaseContext.getCurrentId());
-        //创建一个Redis的Key：user_用户ID_shopping_cart
-        String cartKey = "user_" + BaseContext.getCurrentId()+"_shopping_cart";
-        //判断购物车中是否有该菜品或套餐
+
+        String cartKey = cartKey();
+
+        // 判断购物车中是否已存在该商品
         List<ShoppingCart> list = shoppingCartMapper.list(shoppingCart);
-        //用商品唯一标识作为Hash的field：菜品用dishId，套餐用setmealId
-        String itemField = null;
-        if(list != null && list.size() > 0){
+        if (list != null && !list.isEmpty()) {
             ShoppingCart cart = list.get(0);
             cart.setNumber(cart.getNumber() + 1);
             shoppingCartMapper.updateById(cart);
+
             // 同步更新Redis缓存
-            String updateField = cart.getDishId() != null ? "dish_" + cart.getDishId() : "setmeal_" + cart.getSetmealId();
-            redisTemplate.opsForHash().put(cartKey, updateField, cart);
-            redisTemplate.expire(cartKey, 30, TimeUnit.MINUTES);
-        }
-        //如果购物车中没有该菜品或套餐
-        else{
-            //判断添加的是菜品还是套餐
-            if(shoppingCart.getDishId() != null){
-                //添加的是菜品
-                itemField = "dish_" + shoppingCart.getDishId();
-                DishVO dishvo = dishMapper.getByIdWithFlavor(shoppingCart.getDishId()); // 获取菜品信息
-                shoppingCart.setAmount(dishvo.getPrice());
-                shoppingCart.setImage(dishvo.getImage());
-                shoppingCart.setName(dishvo.getName());
-                shoppingCart.setNumber(1);
-                shoppingCart.setCreateTime(LocalDateTime.now());
-            }
-            else{
-                //添加的是套餐
-                Long setmealId = shoppingCart.getSetmealId();
-                itemField = "setmeal_" + setmealId;
-                Setmeal setmeal = setmealMapper.getById(setmealId);
-                shoppingCart.setAmount(setmeal.getPrice());
-                shoppingCart.setImage(setmeal.getImage());
-                shoppingCart.setName(setmeal.getName());
-                shoppingCart.setNumber(1);
-                shoppingCart.setCreateTime(LocalDateTime.now());
-            }
-            shoppingCartMapper.insert(shoppingCart);
-            //同步保存Redis缓存
-            // Hash类型：Key=用户购物车，Field=商品唯一标识，Value=购物车商品对象
-            redisTemplate.opsForHash().put(cartKey, itemField, shoppingCart);
-            // 设置整个购物车Key的过期时间（30分钟）
-            redisTemplate.expire(cartKey, 30, TimeUnit.MINUTES);
+            String updateField = itemField(cart);
+            writeToRedis(cartKey, updateField, cart);
+            return;
         }
 
+        // 购物车中没有该商品，初始化并插入
+        String itemField;
+        if (shoppingCart.getDishId() != null) {
+            itemField = "dish_" + shoppingCart.getDishId();
+            DishVO dishvo = dishMapper.getByIdWithFlavor(shoppingCart.getDishId());
+            shoppingCart.setAmount(dishvo.getPrice());
+            shoppingCart.setImage(dishvo.getImage());
+            shoppingCart.setName(dishvo.getName());
+        } else {
+            Long setmealId = shoppingCart.getSetmealId();
+            itemField = "setmeal_" + setmealId;
+            Setmeal setmeal = setmealMapper.getById(setmealId);
+            shoppingCart.setAmount(setmeal.getPrice());
+            shoppingCart.setImage(setmeal.getImage());
+            shoppingCart.setName(setmeal.getName());
+        }
+        shoppingCart.setNumber(1);
+        shoppingCart.setCreateTime(LocalDateTime.now());
+
+        shoppingCartMapper.insert(shoppingCart);
+        // 保存到Redis
+        writeToRedis(cartKey, itemField, shoppingCart);
     }
+
+    /**
+     * 返回当前用户购物车列表，优先走缓存
+     */
     public List<ShoppingCart> list() {
         ShoppingCart shoppingCart = new ShoppingCart();
         shoppingCart.setUserId(BaseContext.getCurrentId());
-        //创建一个Redis的Key：user_用户ID_shopping_cart
-        String cartKey = "user_" + BaseContext.getCurrentId()+"_shopping_cart";
-        // 2. 优先查询Redis缓存
-        // 获取Redis Hash中所有的购物车商品（Field对应的Value）
-        Map<Object, Object> cartMap = redisTemplate.opsForHash().entries(cartKey);
-        // 3. 如果Redis中有数据，直接转换为List返回
+        String cartKey = cartKey();
+
+        HashOperations<String, String, Object> hashOps = redisTemplate.opsForHash();
+        Map<String, Object> cartMap = hashOps.entries(cartKey);
         List<ShoppingCart> cartList = new ArrayList<>();
         if (!cartMap.isEmpty()) {
             for (Object value : cartMap.values()) {
-                // 确保类型正确，转换为ShoppingCart对象
                 if (value instanceof ShoppingCart) {
                     cartList.add((ShoppingCart) value);
                 }
             }
             return cartList;
         }
-        // 4. Redis中无数据，查询数据库
-        cartList = shoppingCartMapper.list(shoppingCart);
-        // 5. 将数据库查询结果同步到Redis，方便后续查询命中缓存
-        if (!cartList.isEmpty()) {
-            for (ShoppingCart cart : cartList) {
-                // 生成每个商品的Field（dish_XXX/setmeal_XXX）
-                String itemField = cart.getDishId() != null
-                        ? "dish_" + cart.getDishId()
-                        : "setmeal_" + cart.getSetmealId();
-                // 写入Redis Hash
-                redisTemplate.opsForHash().put(cartKey, itemField, cart);
-            }
-            // 设置缓存过期时间（30分钟）
-            redisTemplate.expire(cartKey, 30, TimeUnit.MINUTES);
-        }
 
-        // 6. 返回数据库查询结果
+        // 缓存未命中，查询数据库并回写缓存
+        cartList = shoppingCartMapper.list(shoppingCart);
+        if (cartList != null && !cartList.isEmpty()) {
+            for (ShoppingCart cart : cartList) {
+                String itemField = itemField(cart);
+                hashOps.put(cartKey, itemField, cart);
+            }
+            redisTemplate.expire(cartKey, CART_EXPIRE_MINUTES, TimeUnit.MINUTES);
+        }
         return cartList;
     }
+
     @Transactional(rollbackFor = Exception.class)
     public void clean() {
         Long userId = BaseContext.getCurrentId();
@@ -130,32 +122,48 @@ public class ShoppingCartServiceimpl implements ShoppingCartService {
         redisTemplate.delete(cartKey);
         shoppingCartMapper.deleteByUserId(userId);
     }
+
     @Transactional(rollbackFor = Exception.class)
     public void sub(ShoppingCartDTO shoppingCartDTO) {
-        //创建一个ShoppingCart对象
         ShoppingCart shoppingCart = new ShoppingCart();
         shoppingCart.setUserId(BaseContext.getCurrentId());
         shoppingCart.setDishId(shoppingCartDTO.getDishId());
         shoppingCart.setSetmealId(shoppingCartDTO.getSetmealId());
-        //获取购物车数据
+
         List<ShoppingCart> cartList = shoppingCartMapper.list(shoppingCart);
-        if (cartList != null && cartList.size() > 0) {
+        if (cartList != null && !cartList.isEmpty()) {
             ShoppingCart cart = cartList.get(0);
-            // 减少数量
             cart.setNumber(cart.getNumber() - 1);
-            //获取Redis的Key和Field
-            String cartKey = "user_" + BaseContext.getCurrentId() + "_shopping_cart";
-            String itemField = cart.getDishId() != null ? "dish_" + cart.getDishId() : "setmeal_" + cart.getSetmealId();
-            // 判断数量
+
+            String cartKey = cartKey();
+            String itemField = itemField(cart);
+
+            HashOperations<String, String, Object> hashOps = redisTemplate.opsForHash();
+
             if (cart.getNumber() > 0) {
                 shoppingCartMapper.updateById(cart);
-                redisTemplate.opsForHash().put(cartKey, itemField, cart);
-            } else if(cart.getNumber() == 0){
+                writeToRedis(cartKey, itemField, cart);
+            } else if (cart.getNumber() == 0) {
                 shoppingCartMapper.deleteById(shoppingCart);
-                redisTemplate.opsForHash().delete(cartKey, itemField);
+                hashOps.delete(cartKey, itemField);
+                // 保持和其它写入位置一致的过期策略（如果仍存在其他字段）
+                redisTemplate.expire(cartKey, CART_EXPIRE_MINUTES, TimeUnit.MINUTES);
             }
-            redisTemplate.expire(cartKey, 30, TimeUnit.MINUTES);
         }
     }
-}
 
+    // --- helper methods ---
+    private String cartKey() {
+        return "user_" + BaseContext.getCurrentId() + "_shopping_cart";
+    }
+
+    private String itemField(ShoppingCart cart) {
+        return cart.getDishId() != null ? "dish_" + cart.getDishId() : "setmeal_" + cart.getSetmealId();
+    }
+
+    private void writeToRedis(String cartKey, String field, ShoppingCart cart) {
+        HashOperations<String, String, Object> hashOps = redisTemplate.opsForHash();
+        hashOps.put(cartKey, field, cart);
+        redisTemplate.expire(cartKey, CART_EXPIRE_MINUTES, TimeUnit.MINUTES);
+    }
+}
