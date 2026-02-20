@@ -1,5 +1,6 @@
 package com.sky.service.impl;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
@@ -18,6 +19,7 @@ import com.sky.vo.OrderPaymentVO;
 import com.sky.vo.OrderStatisticsVO;
 import com.sky.vo.OrderSubmitVO;
 import com.sky.vo.OrderVO;
+import com.sky.websocket.WebSocketServer;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -27,10 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Random;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,6 +48,8 @@ public class OrderServiceimpl implements OrderService {
     private UserMapper userMapper;
     @Autowired
     private RedisTemplate<String, Object> redisTemplate; // 用于发布来单提醒
+    @Autowired
+    private WebSocketServer webSocketServer;
 
     //生成订单号
     private String generateOrderNo() {
@@ -192,21 +193,13 @@ public class OrderServiceimpl implements OrderService {
                 .build();
 
         orderMapper.update(orders);
-
-        // 发布来单提醒（幂等），与 submitOrder 保持一致
-        try {
-            JSONObject msg = new JSONObject();
-            msg.put("id", ordersDB.getId());
-            msg.put("number", ordersDB.getNumber());
-            msg.put("amount", ordersDB.getAmount());
-            msg.put("userName", ordersDB.getUserName());
-            msg.put("address", ordersDB.getAddress());
-            msg.put("orderTime", ordersDB.getOrderTime());
-            msg.put("status", Orders.TO_BE_CONFIRMED);
-            redisTemplate.convertAndSend("order:arrived", msg.toJSONString());
-        } catch (Exception ex) {
-            System.err.println("publish order arrived failed: " + ex.getMessage());
-        }
+        // 发布来单提醒，推送信息type，openid，content
+        Map map = new HashMap();
+        map.put("type", 1);//1代表来单提醒 2代表客户催单
+        map.put("orderId", ordersDB.getId());
+        map.put("content", "您有新的订单，请及时处理" + outTradeNo);
+        String json = JSON.toJSONString(map);
+        webSocketServer.sendToAllClient(json);
     }
 
     //历史订单查询
@@ -293,9 +286,11 @@ public class OrderServiceimpl implements OrderService {
         }
         return new PageResult(pageInfo.getTotal(), list);
     }
+
     public OrderStatisticsVO statistics() {
         return orderMapper.statistics();
     }
+
     public void confirm(OrdersConfirmDTO ordersConfirmDTO) {
         Long id = ordersConfirmDTO.getId();
         Orders orders = orderMapper.getById(id);
@@ -310,6 +305,7 @@ public class OrderServiceimpl implements OrderService {
         if (orders.getPayStatus() == Orders.PAID)
             orderMapper.updateStatus(id, Orders.CONFIRMED);
     }
+
     public void rejection(OrdersRejectionDTO ordersRejectionDTO) {
         Long id = ordersRejectionDTO.getId();
         Orders ordersDB = orderMapper.getById(id);
@@ -330,6 +326,7 @@ public class OrderServiceimpl implements OrderService {
             orderMapper.update(orders);
         }
     }
+
     public void cancel(OrdersCancelDTO ordersCancelDTO) {
         Long id = ordersCancelDTO.getId();
         Orders ordersDB = orderMapper.getById(id);
@@ -350,22 +347,23 @@ public class OrderServiceimpl implements OrderService {
     }
 
     @Override
-        public void delivery(Long id) {
-            // 根据id查询订单
-            Orders ordersDB = orderMapper.getById(id);
+    public void delivery(Long id) {
+        // 根据id查询订单
+        Orders ordersDB = orderMapper.getById(id);
 
-            // 校验订单是否存在，并且状态为3
-            if (ordersDB == null || !ordersDB.getStatus().equals(Orders.CONFIRMED)) {
-                throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
-            }
-
-            Orders orders = new Orders();
-            orders.setId(ordersDB.getId());
-            // 更新订单状态,状态转为派送中
-            orders.setStatus(Orders.DELIVERY_IN_PROGRESS);
-
-            orderMapper.update(orders);
+        // 校验订单是否存在，并且状态为3
+        if (ordersDB == null || !ordersDB.getStatus().equals(Orders.CONFIRMED)) {
+            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
+
+        Orders orders = new Orders();
+        orders.setId(ordersDB.getId());
+        // 更新订单状态,状态转为派送中
+        orders.setStatus(Orders.DELIVERY_IN_PROGRESS);
+
+        orderMapper.update(orders);
+    }
+
     public void complete(Long id) {
         // 根据id查询订单
         Orders ordersDB = orderMapper.getById(id);
@@ -382,5 +380,23 @@ public class OrderServiceimpl implements OrderService {
         orders.setDeliveryTime(LocalDateTime.now());
 
         orderMapper.update(orders);
+    }
+
+    public void reminder(Long id) {
+        // 根据id查询订单
+        Orders ordersDB = orderMapper.getById(id);
+
+        // 校验订单是否存在，并且状态为3或4
+        if (ordersDB == null) {
+            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+        }
+
+        // 发布催单提醒，推送信息type，openid，content
+        Map map = new HashMap();
+        map.put("type", 2);//1代表来单提醒 2代表客户催单
+        map.put("orderId", ordersDB.getId());
+        map.put("content", "订单催单：订单号" + ordersDB.getNumber());
+        String json = JSON.toJSONString(map);
+        webSocketServer.sendToAllClient(json);
     }
 }

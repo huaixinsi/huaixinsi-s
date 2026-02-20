@@ -43,4 +43,8 @@ public interface OrderMapper {
 
 
     OrderStatisticsVO statistics();
+    @Select("select count(id) from orders where status = 5 and order_time < #{begin}")
+    int completedTimeoutOrders();
+    @Update("update orders set status = #{deliveryInProgress} where status = 4 and order_time < #{begin}")
+    void updateStatus4Completion(Integer deliveryInProgress, LocalDateTime begin);
 }
