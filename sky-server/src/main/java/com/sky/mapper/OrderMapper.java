@@ -47,4 +47,6 @@ public interface OrderMapper {
     int completedTimeoutOrders();
     @Update("update orders set status = #{deliveryInProgress} where status = 4 and order_time < #{begin}")
     void updateStatus4Completion(Integer deliveryInProgress, LocalDateTime begin);
+
+    Integer countByMap(Map map);
 }
